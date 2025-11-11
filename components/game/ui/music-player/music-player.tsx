@@ -1,6 +1,6 @@
   'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useMusicPlayer } from './hooks/useMusicPlayer';
 import { PlayerService } from './services/PlayerService';
 import { UnlockableMusicPlayerFactory } from './factories/UnlockableMusicPlayerFactory';
@@ -44,6 +44,7 @@ export default function UnlockableMusicPlayer({ className = '', userName, comple
   const unlockablePlayer = UnlockableMusicPlayerFactory.createPlayerForCurrentUser();
   const playerConfig = unlockablePlayer.getConfig();
   const availableFeatures = unlockablePlayer.getAvailableFeatures();
+  const hasTriggeredAutoPlay = useRef(false);
 
   useEffect(() => {
     const savedPlayer = playerService.loadPlayerFromStorage();
@@ -62,6 +63,19 @@ export default function UnlockableMusicPlayer({ className = '', userName, comple
       
       loadMusicFiles();
   }, [completedSubtopics, playerService, loadMusicFiles]);
+
+  useEffect(() => {
+    if (
+      !hasTriggeredAutoPlay.current &&
+      musicTracks.length > 0 &&
+      !isPlaying &&
+      !isLoading
+    ) {
+      hasTriggeredAutoPlay.current = true;
+      console.log('🎵 Auto-triggering playback on game entry');
+      togglePlayPause();
+    }
+  }, [musicTracks.length, isPlaying, isLoading, togglePlayPause]);
 
   const handlePlaylistToggle = () => {
     setShowPlaylist(!showPlaylist);

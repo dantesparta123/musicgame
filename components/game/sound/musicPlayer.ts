@@ -1,6 +1,7 @@
 import { Midi } from '@tonejs/midi';
 import * as Tone from 'tone';
 import { start, getContext, now as toneNow } from 'tone';
+import { getSongInstrumentOverrides, SongInstrumentOverrides } from './songInstrumentMap';
 
 let drumSampler: Tone.Sampler | Tone.MembraneSynth | null = null;
 let masterVolume: Tone.Volume | null = null;
@@ -89,6 +90,14 @@ export function getGlobalVolume(): number {
   return globalVolume;
 }
 
+type TrackState = {
+  name: string;
+  channel: number;
+  notes: number;
+  isDrum: boolean;
+  instrumentId: string;
+};
+
 let midiPlayState: {
   isPlaying: boolean;
   startTime: number;
@@ -99,12 +108,7 @@ let midiPlayState: {
   totalDuration: number;
   arrayBuffer: ArrayBuffer | null;
   isCleaningUp: boolean;
-  tracks: Array<{
-    name: string;
-    channel: number;
-    notes: number;
-    isDrum: boolean;
-  }>;
+  tracks: TrackState[];
 } = {
   isPlaying: false,
   startTime: 0,
@@ -120,6 +124,62 @@ let midiPlayState: {
 
 const SCHEDULE_WINDOW = 1;
 const SCHEDULE_INTERVAL = 200;
+
+function normalizeSongKey(url: string): string {
+  try {
+    const fileName = url.split('/').pop() || '';
+    return fileName.replace(/\.[^/.]+$/, '').toLowerCase();
+  } catch (error) {
+    return '';
+  }
+}
+
+function determineInstrumentForTrack(track: any, overrides?: SongInstrumentOverrides): string {
+  const channel = track.channel ?? 0;
+
+  if (channel === 9) {
+    return 'drums';
+  }
+
+  const instrumentName = (track.instrument?.name || '').toLowerCase();
+  const instrumentFamily = (track.instrument?.family || '').toLowerCase();
+  const trackName = (track.name || '').toLowerCase();
+
+  const isDrumLike = [instrumentName, instrumentFamily, trackName].some(text =>
+    text.includes('drum') || text.includes('percussion') || text.includes('kit')
+  );
+  if (isDrumLike) {
+    return 'drums';
+  }
+
+  const isBass = [instrumentName, instrumentFamily, trackName].some(text =>
+    text.includes('bass')
+  );
+  if (isBass) {
+    return 'bass';
+  }
+
+  const isGuitar = [instrumentName, instrumentFamily, trackName].some(text =>
+    text.includes('guitar')
+  );
+  if (isGuitar) {
+    return 'guitar';
+  }
+
+  const isUkulele = [instrumentName, instrumentFamily, trackName].some(text =>
+    text.includes('ukulele')
+  );
+  if (isUkulele) {
+    return 'ukulele';
+  }
+
+  const override = overrides?.[channel];
+  if (override) {
+    return override;
+  }
+
+  return 'piano';
+}
 
 function cleanupAudioObject(obj: any, name: string) {
   if (obj) {
@@ -180,6 +240,7 @@ function cleanupAllAudioResources() {
   cleanupAudioObject(drumSampler, 'drumSampler');
   
   trackSamplers.clear();
+  trackInstruments.clear();
   
   cleanupMidiObjects();
   
@@ -278,49 +339,59 @@ export async function playMidiSample(url: string) {
       });
     });
 
+    trackInstruments.clear();
+    trackSamplers.clear();
+    const songKey = normalizeSongKey(url);
+    const overrides = getSongInstrumentOverrides(songKey);
+    for (const track of midi.tracks) {
+      const channel = typeof track.channel === 'number' ? track.channel : 0;
+      const instrumentId = determineInstrumentForTrack(track, overrides);
+      trackInstruments.set(channel, instrumentId);
+    }
+
     const tracks = midi.tracks
       .filter(track => track.notes.length > 0)
-      .map(track => ({
-        name: track.name || `Track ${track.channel}`,
-        channel: track.channel,
-        notes: track.notes.length,
-        isDrum: (track.name || '').toLowerCase().includes('drum'),
-      }));
+      .map(track => {
+        const channel = typeof track.channel === 'number' ? track.channel : 0;
+        const instrumentId = trackInstruments.get(channel) || 'piano';
+        const isDrum = instrumentId === 'drums';
+        return {
+          name: track.name || `Track ${track.channel}`,
+          channel,
+          notes: track.notes.length,
+          isDrum,
+          instrumentId,
+        };
+      });
 
-    trackSamplers.clear();
     for (const track of tracks) {
       try {
-        if (track.isDrum && !trackInstruments.has(track.channel)) {
-          trackInstruments.set(track.channel, 'drums');
+        if (track.isDrum) {
+          continue;
         }
-        
-        if (!track.isDrum) {
-          const instrument = getTrackInstrument(track.channel);
-          
-          if (allSamplers.has(instrument)) {
-            const preloadedSampler = allSamplers.get(instrument)!;
-            if (masterVolume) {
-              preloadedSampler.disconnect();
-              preloadedSampler.connect(masterVolume);
-            }
-            trackSamplers.set(track.channel, preloadedSampler);
-          } else {
-            if (allSamplers.has('piano')) {
-              const pianoSampler = allSamplers.get('piano')!;
-              if (masterVolume) {
-                pianoSampler.disconnect();
-                pianoSampler.connect(masterVolume);
-              }
-              trackSamplers.set(track.channel, pianoSampler);
-            }
+
+        const instrument = getTrackInstrument(track.channel);
+
+        if (allSamplers.has(instrument)) {
+          const preloadedSampler = allSamplers.get(instrument)!;
+          if (masterVolume) {
+            preloadedSampler.disconnect();
+            preloadedSampler.connect(masterVolume);
           }
+          trackSamplers.set(track.channel, preloadedSampler);
+        } else if (allSamplers.has('piano')) {
+          const pianoSampler = allSamplers.get('piano')!;
+          if (masterVolume) {
+            pianoSampler.disconnect();
+            pianoSampler.connect(masterVolume);
+          }
+          trackSamplers.set(track.channel, pianoSampler);
         }
       } catch (error) {
         // Silent error handling
       }
     }
 
-    // Tone.js v14: loaded() 被移除，等待采样器加载
     await new Promise(resolve => setTimeout(resolve, 100));
 
     midiPlayState = {
@@ -363,9 +434,11 @@ function scheduleNextWindow() {
   let scheduledNotes = 0;
 
   midi.tracks.forEach(track => {
-    const isDrum = (track.name || '').toLowerCase().includes('drum');
-    
-    if (mutedTracks.has(track.channel)) {
+    const channel = typeof track.channel === 'number' ? track.channel : 0;
+    const instrumentId = getTrackInstrument(channel);
+    const isDrum = instrumentId === 'drums';
+
+    if (mutedTracks.has(channel)) {
       return;
     }
     
@@ -397,7 +470,7 @@ function scheduleNextWindow() {
               scheduledNotes++;
             }
           } else {
-            const trackSampler = trackSamplers.get(track.channel);
+            const trackSampler = trackSamplers.get(channel);
             if (trackSampler) {
               trackSampler.triggerAttackRelease(
                 note.name,
@@ -479,33 +552,46 @@ export function getCurrentTracks() {
 export function setTrackInstrument(trackChannel: number, instrument: string) {
   trackInstruments.set(trackChannel, instrument);
 
-  if (allSamplers.has(instrument)) {
+  const trackState = midiPlayState.tracks.find(t => t.channel === trackChannel);
+  if (trackState) {
+    trackState.instrumentId = instrument;
+    trackState.isDrum = instrument === 'drums';
+  }
+
+  if (instrument === 'drums') {
+    trackSamplers.delete(trackChannel);
+  } else if (allSamplers.has(instrument)) {
     const preloadedSampler = allSamplers.get(instrument)!;
     if (masterVolume) {
+      preloadedSampler.disconnect();
       preloadedSampler.connect(masterVolume);
     }
     trackSamplers.set(trackChannel, preloadedSampler);
-  } else {
-    if (allSamplers.has('piano')) {
-      const pianoSampler = allSamplers.get('piano')!;
-      if (masterVolume) {
-        pianoSampler.connect(masterVolume);
-      }
-      trackSamplers.set(trackChannel, pianoSampler);
+  } else if (allSamplers.has('piano')) {
+    const pianoSampler = allSamplers.get('piano')!;
+    if (masterVolume) {
+      pianoSampler.disconnect();
+      pianoSampler.connect(masterVolume);
     }
+    trackSamplers.set(trackChannel, pianoSampler);
   }
+
   if (midiPlayState.isPlaying) {
     scheduleNextWindow();
   }
 }
 
 export function getTrackInstrument(trackChannel: number): string {
-  const tracks = midiPlayState.tracks;
-  const track = tracks.find(t => t.channel === trackChannel);
-  if (track && track.isDrum) {
-    return trackInstruments.get(trackChannel) || 'drums';
+  if (trackInstruments.has(trackChannel)) {
+    return trackInstruments.get(trackChannel)!;
   }
-  return trackInstruments.get(trackChannel) || 'piano';
+
+  const track = midiPlayState.tracks.find(t => t.channel === trackChannel);
+  if (track) {
+    return track.instrumentId;
+  }
+
+  return 'piano';
 }
 
 export function setTrackMuted(trackChannel: number, muted: boolean) {

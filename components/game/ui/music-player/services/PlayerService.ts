@@ -1,17 +1,8 @@
-import { PlayerInfo, PlayerFeature, FeatureRequirement, SubtopicProgress } from '../types/PlayerTypes';
-
-
-const SONG_UNLOCK_CONFIG: Record<string, string[]> = {
-  'Music basics': ['Bach-846'],
-  'Music history': ['mz-311'],
-  'Blues music basic': ['The-Thrill-Is-Gone'],
-  'Rock music': ['Sweet-Child-O-Mine4'],
-};
+import { PlayerInfo, PlayerFeature, FeatureRequirement } from '../types/PlayerTypes';
 
 
 export const ALL_SONGS = [
   { name: 'Sweet-Child-O-Mine4', file: '/sfx/background-music/Sweet-Child-O-Mine4.mid', displayName: 'Sweet Child O Mine' },
-  { name: 'Bach-846', file: '/sfx/background-music/Bach-846.mid', displayName: 'Bach 846' },
   { name: 'Love-Story', file: '/sfx/background-music/Love-Story.mid', displayName: 'Love Story' },
   { name: 'My-Heart-Will-Go-On', file: '/sfx/background-music/My-Heart-Will-Go-On.mid', displayName: 'My Heart Will Go On' },
   { name: 'He-is-a-pirate', file: '/sfx/background-music/He-is-a-pirate.mid', displayName: 'He is a Pirate' },
@@ -114,31 +105,18 @@ export class PlayerService {
 
 
   isFeatureUnlocked(feature: PlayerFeature): boolean {
-    const requirement = FEATURE_REQUIREMENTS.find(r => r.feature === feature);
-    if (!requirement) return false;
-
-
-    const completedSubtopic = this.realCompletedSubtopics.find(
-      s => s.title === requirement.requiredSubtopic
-    );
-
-    return !!completedSubtopic;
+    const requirementExists = FEATURE_REQUIREMENTS.find(r => r.feature === feature);
+    return !!requirementExists;
   }
 
 
   getAvailableFeatures(): PlayerFeature[] {
-    return FEATURE_REQUIREMENTS
-      .filter(req => this.isFeatureUnlocked(req.feature))
-      .map(req => req.feature);
+    return FEATURE_REQUIREMENTS.map(req => req.feature);
   }
 
 
   getUpcomingFeatures(): FeatureRequirement[] {
-    if (!this.currentPlayer) return [];
-
-    return FEATURE_REQUIREMENTS.filter(req => 
-      !this.isFeatureUnlocked(req.feature)
-    );
+    return [];
   }
 
 
@@ -180,40 +158,17 @@ export class PlayerService {
   }> {
     if (!this.currentPlayer) return [];
 
-    return FEATURE_REQUIREMENTS.map(req => {
-      const isUnlocked = this.isFeatureUnlocked(req.feature);
-      const progress = isUnlocked ? 100 : 0;
-      
-      return {
-        feature: req.feature,
-        requirement: req,
-        isUnlocked,
-        progress: isUnlocked ? 100 : progress
-      };
-    });
+    return FEATURE_REQUIREMENTS.map(req => ({
+      feature: req.feature,
+      requirement: req,
+      isUnlocked: true,
+      progress: 100
+    }));
   }
 
 
   getAvailableSongs(): typeof ALL_SONGS {
-    const availableSongs: typeof ALL_SONGS = [];
-    
-
-    for (const [subtopicId, songNames] of Object.entries(SONG_UNLOCK_CONFIG)) {
-      const isCompleted = this.realCompletedSubtopics.find(
-        s => s.title === subtopicId
-      );
-      
-      if (isCompleted) {
-        songNames.forEach(songName => {
-          const song = ALL_SONGS.find(s => s.name === songName);
-          if (song && !availableSongs.find(s => s.name === song.name)) {
-            availableSongs.push(song);
-          }
-        });
-      }
-    }
-    
-    return availableSongs;
+    return ALL_SONGS;
   }
 
 
@@ -225,63 +180,34 @@ export class PlayerService {
   }> {
     return ALL_SONGS.map(song => {
 
-      const subtopicId = Object.entries(SONG_UNLOCK_CONFIG).find(([_, songNames]) => 
-        songNames.includes(song.name)
-      )?.[0];
-
-      if (subtopicId) {
-        const subtopic = this.realCompletedSubtopics.find(s => s.title === subtopicId);
-        const isUnlocked = !!subtopic;
-        
-        return {
-          song,
-          isUnlocked,
-          requiredSubtopic: subtopicId,
-          subtopicName: subtopic?.title
-        };
-      }
-
-      return { song, isUnlocked: false };
+      return {
+        song,
+        isUnlocked: true
+      };
     });
   }
 
 
   isInstrumentUnlocked(instrumentId: string): boolean {
-    const subtopicId = Object.entries(INSTRUMENT_UNLOCK_CONFIG).find(([_, instrumentIds]) => 
-      instrumentIds.includes(instrumentId)
-    )?.[0];
-
-    if (subtopicId) {
-      const completedSubtopic = this.realCompletedSubtopics.find(
-        s => s.title === subtopicId
-      );
-      return !!completedSubtopic;
-    }
-
-
     return true;
   }
 
 
   getAvailableInstruments(): string[] {
-    const availableInstruments: string[] = [];
-    
+    const defaultInstruments = ['piano', 'guitar', 'drums', 'ukulele', 'bass'];
+    const unlockableInstruments = Object.values(INSTRUMENT_UNLOCK_CONFIG).flat();
+    const extendedInstruments = [
+      'violin',
+      'flute',
+      'saxophone',
+      'trumpet',
+      'accordion',
+      'harp',
+      'xylophone',
+      'organ'
+    ];
 
-    for (const [subtopicId, instrumentIds] of Object.entries(INSTRUMENT_UNLOCK_CONFIG)) {
-      const isCompleted = this.realCompletedSubtopics.find(
-        s => s.title === subtopicId
-      );
-      
-      if (isCompleted) {
-        instrumentIds.forEach(instrumentId => {
-          if (!availableInstruments.includes(instrumentId)) {
-            availableInstruments.push(instrumentId);
-          }
-        });
-      }
-    }
-    
-    return availableInstruments;
+    return Array.from(new Set([...defaultInstruments, ...unlockableInstruments, ...extendedInstruments]));
   }
 
 
@@ -295,23 +221,6 @@ export class PlayerService {
     const allInstruments = ['piano', 'guitar', 'drums', 'ukulele', 'bass', 'violin', 'flute', 'saxophone', 'trumpet', 'accordion', 'harp', 'xylophone', 'organ'];
     
     return allInstruments.map(instrumentId => {
-
-      const subtopicId = Object.entries(INSTRUMENT_UNLOCK_CONFIG).find(([_, instrumentIds]) => 
-        instrumentIds.includes(instrumentId)
-      )?.[0];
-
-      if (subtopicId) {
-        const subtopic = this.realCompletedSubtopics.find(s => s.title === subtopicId);
-        const isUnlocked = !!subtopic;
-        
-        return {
-          instrumentId,
-          instrumentName: this.getInstrumentDisplayName(instrumentId),
-          isUnlocked,
-          requiredSubtopic: subtopicId,
-          subtopicName: subtopic?.title
-        };
-      }
 
       return { 
         instrumentId, 
