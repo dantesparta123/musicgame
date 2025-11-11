@@ -84,7 +84,7 @@ const GameCanvas = ({ developerMode = false, userId, userName, completedSubtopic
     if (isClient) {
       initSoundManagerAsync();
     }
-  }, [isClient]);
+  }, [isClient, developerMode]);
 
   useEffect(() => {
     if (p5InstanceRef.current) {
@@ -374,6 +374,38 @@ const GameCanvas = ({ developerMode = false, userId, userName, completedSubtopic
           
 
 
+          p.push();
+          p.resetMatrix();
+          p.textAlign(p.LEFT, p.TOP);
+          p.textSize(16);
+          p.fill(255);
+          p.stroke(0, 150);
+          p.strokeWeight(3);
+          const instructions = [
+            '按 WASD 控制方向',
+            '滚动鼠标滚轮调整显示距离',
+            '鼠标左键发射子弹',
+            '按 1 或 2 切换子弹类型：',
+            '  1 → 无法跟踪的 AOE 子弹',
+            '  2 → 单体伤害的跟踪子弹',
+            '按 5 生成一些敌人来击杀吧！',
+            '右上角音乐播放器可切歌与调音色，欢迎探索！'
+          ];
+          const padding = 12;
+          const lineHeight = 22;
+          const boxWidth = 420;
+          const boxHeight = instructions.length * lineHeight + padding * 2;
+          p.fill(0, 150);
+          p.noStroke();
+          p.rect(padding, padding, boxWidth, boxHeight, 8);
+          p.fill(255);
+          p.noStroke();
+          for (let i = 0; i < instructions.length; i++) {
+            p.text(instructions[i], padding * 2, padding * 2 + i * lineHeight);
+          }
+          p.pop();
+
+
           if (p5InstanceRef.current && p5InstanceRef.current._frameRate) {
             p5InstanceRef.current._actualFrameRate = p.frameRate();
             p5InstanceRef.current._frameCount = p.frameCount;
@@ -551,6 +583,11 @@ const GameCanvas = ({ developerMode = false, userId, userName, completedSubtopic
     return () => {
       console.log('🛑 GameCanvas component unmounting, starting resource cleanup...');
       
+      if (enemySpawnInterval) {
+        clearInterval(enemySpawnInterval);
+        enemySpawnInterval = null;
+      }
+
 
       if (p5InstanceRef.current) {
         try {

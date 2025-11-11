@@ -203,20 +203,7 @@ async function playSoundByType(type: SoundEffectType, effect: any, config: Sound
       break;
 
     case SoundEffectType.PLAYER_DEATH:
-      console.log('Playing death sound effect, volume config:', config.volume);
-      const deathParams = playParams || { note: 'A2', duration: 1.0 };
-      if (config.volume !== undefined) {
-        effect.mainSynth.volume.value = config.volume;
-        console.log('Setting main synth volume:', config.volume);
-        if (effect.subGain) {
-          effect.subGain.volume.value = config.volume - 3;
-          console.log('Setting sub synth volume:', config.volume - 3);
-        }
-      }
-      console.log('Starting death sound effect, note:', deathParams.note, 'duration:', deathParams.duration);
-      effect.mainSynth.triggerAttackRelease(deathParams.note, deathParams.duration, playTime, 1);
-      effect.subOsc.start(playTime);
-      effect.subEnvelope.triggerAttackRelease(deathParams.duration, playTime);
+      console.log('Player death sound effect disabled');
       break;
 
     case SoundEffectType.PLAYER_HURT:

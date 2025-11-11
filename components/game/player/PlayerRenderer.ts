@@ -1,7 +1,6 @@
 import type p5 from 'p5';
 import type { ShapeFormula } from './formulas';
 import { GAME_CONSTANTS } from '../GameConstants';
-import { playPlayerDeath } from '../sound/soundEffects/soundManager';
 
 export interface HealthBarConfig {
   width?: number;
@@ -71,8 +70,6 @@ export class PlayerRenderer {
       
       if (progress < 0.1 && this.config.playDeathSound && healthInfo.deathAnimationStart !== this.lastDeathTime) {
         this.lastDeathTime = healthInfo.deathAnimationStart;
-        console.log('🎵 Playing player death sound');
-        playPlayerDeath();
       }
       
       if (progress < 1) {
